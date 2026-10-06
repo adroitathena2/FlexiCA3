@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Paytriq — 7-agent campus sponsorship mesh · live trace console</title>
+<meta name="description" content="Live-trace console for the Paytriq multi-agent campus sponsorship system. No build step, no dependencies." />
+<link rel="stylesheet" href="styles.css" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0f14'/%3E%3Ctext x='16' y='22' font-family='monospace' font-size='16' fill='%234cc9f0' text-anchor='middle'%3E%E2%97%88%3C/text%3E%3C/svg%3E" />
+</head>
+<body>
+
+<a class="skip-link" href="#trace-feed">Skip to live trace</a>
+
+<!-- ============================== persistent failure banner ==============================
+     Hidden while every subsystem has answered. Any unreachable backend, dead
+     EventSource or failed gate call fills it in with the URL and the start
+     command. It is never removed for a failure - only for a genuine success. -->
+<div id="global-banner" class="global-banner" hidden role="alert" aria-live="assertive">
+  <div class="global-banner__icon" aria-hidden="true">▲</div>
+  <div class="global-banner__body">
+    <div class="global-banner__title" id="global-banner-title"></div>
+    <div class="global-banner__detail" id="global-banner-detail"></div>
+    <div class="global-banner__cmd"><code id="global-banner-cmd"></code></div>
+  </div>
+  <div class="global-banner__actions">
+    <button type="button" class="btn btn--sm" id="banner-retry">Retry now</button>
+    <button type="button" class="btn btn--sm btn--ghost" id="banner-dismiss">Dismiss</button>
+  </div>
+</div>
+
+<!-- ============================== header ============================== -->
+<header class="topbar">
+  <div class="topbar__brand">
+    <span class="logo" aria-hidden="true"></span>
+    <div class="topbar__names">
+      <h1>PAYTRIQ</h1>
+      <p class="topbar__tag">7-agent campus-sponsorship mesh · live trace console</p>
+    </div>
+  </div>
+
+  <div class="topbar__config">
+    <div class="field field--inline">
+      <label for="api-base">API base</label>
+      <input type="text" id="api-base" spellcheck="false" autocomplete="off"
+             placeholder="http://localhost:18780" />
+    </div>
+    <button type="button" class="btn btn--sm" id="api-apply">Apply&nbsp;/&nbsp;reconnect</button>
+
+    <div class="field field--inline">
+      <label for="run-id">run_id</label>
+      <input type="text" id="run-id" spellcheck="false" autocomplete="off"
+             placeholder="learned from backend" />
+    </div>
+    <div class="runid-actions">
+      <button type="button" class="btn btn--xs" id="trace-connect" title="Subscribe to /api/runs/{run_id}/stream">Connect</button>
+      <button type="button" class="btn btn--xs btn--ghost" id="trace-disconnect" title="Close the SSE connection">Stop</button>
+    </div>
+  </div>
+
+  <div class="topbar__health">
+    <div class="health-strip" id="health-strip" aria-label="subsystem health">
+      <span class="chip chip--muted">health: not checked yet</span>
+    </div>
+    <button type="button" class="btn btn--xs btn--ghost" id="health-refresh" title="GET /health">↻ health</button>
+  </div>
+</header>
+
+<!-- ============================== layout ============================== -->
+<main class="layout">
+
+  <!-- ------------------------------ left rail ------------------------------ -->
+  <div class="col col--left">
+
+    <!-- 2. event setup -->
+    <section class="panel" id="panel-setup" aria-labelledby="h-setup">
+      <header class="panel__head">
+        <h2 class="panel__title" id="h-setup"><span class="panel__num">1</span> Event setup</h2>
+        <div class="panel__tools">
+          <button type="button" class="btn btn--xs" id="event-prefill">Prefill demo event</button>
+          <button type="button" class="btn btn--xs btn--ghost" id="event-schema-toggle">schema</button>
+        </div>
+      </header>
+      <div class="panel__body">
+        <div class="note note--tight" id="schema-note">
+          Form fields are read from <code>GET /api/schema/event</code> …
+        </div>
+        <form id="event-form" class="form" autocomplete="off" novalidate>
+          <div id="event-form-host"><!-- built from /api/schema/event, else a declared fallback --></div>
+          <div class="form__actions">
+            <button type="submit" class="btn btn--primary" id="event-create">Create event</button>
+            <span class="form__status" id="event-status" role="status"></span>
+          </div>
+        </form>
+        <details class="disclosure" id="schema-disclosure">
+          <summary>Raw JSON Schema as served by the backend</summary>
+          <pre class="pre pre--scroll" id="schema-raw">not fetched</pre>
+        </details>
+      </div>
+    </section>
+
+    <!-- 3. pipeline controls -->
+    <section class="panel" id="panel-pipeline" aria-labelledby="h-pipe">
+      <header class="panel__head">
+        <h2 class="panel__title" id="h-pipe"><span class="panel__num">2</span> Pipeline controls</h2>
+        <div class="panel__tools">
+          <button type="button" class="btn btn--xs btn--ghost" id="pipe-reset">Reset state</button>
+        </div>
+      </header>
+      <div class="panel__body">
+        <div class="stage-list" id="stage-list"><!-- injected --></div>
+        <p class="note note--tight">
+          Keys <kbd>1</kbd>–<kbd>7</kbd> run a stage, <kbd>n</kbd> runs the next unrun stage.
+          A stage is only marked done when the backend says so.
+        </p>
+      </div>
+    </section>
+
+    <!-- human gates -->
+    <section class="panel" id="panel-gates" aria-labelledby="h-gates">
+      <header class="panel__head">
+        <h2 class="panel__title" id="h-gates"><span class="panel__num">3</span> Human gates</h2>
+        <div class="panel__tools">
+          <button type="button" class="btn btn--xs" id="gates-refresh">Refresh</button>
+        </div>
+      </header>
+      <div class="panel__body" id="gates-host">
+        <p class="empty">No gate has been requested yet. Press <strong>Outreach</strong> — it is
+        expected to be <em>refused</em> with <code>403 {gated:true}</code> until a human approves.</p>
+      </div>
+    </section>
+
+    <!-- 10. sponsor reply simulator -->
+    <section class="panel" id="panel-reply" aria-labelledby="h-reply">
+      <header class="panel__head">
+        <h2 class="panel__title" id="h-reply"><span class="panel__num">4</span> Simulate sponsor reply</h2>
+        <div class="panel__tools">
+          <button type="button" class="btn btn--xs btn--ghost" id="reply-random">shuffle</button>
+        </div>
+      </header>
+      <div class="panel__body">
+        <div class="preset-row" id="preset-row"><!-- injected --></div>
+        <div class="note note--tight" id="preset-note"></div>
+        <label class="field field--block">
+          <span class="field__label">reply text (the simulated counterparty is not an agent)</span>
+          <textarea id="reply-text" rows="3" spellcheck="false"></textarea>
+        </label>
+        <div class="field field--inline">
+          <label for="reply-brand">brand (optional)</label>
+          <input type="text" id="reply-brand" spellcheck="false" placeholder="leave blank to let the backend choose" />
+        </div>
+        <div class="form__actions">
+          <button type="button" class="btn" id="reply-send">Send reply → <code>POST /reply</code></button>
+          <span class="form__status" id="reply-status" role="status"></span>
+        </div>
+        <div id="reply-result" class="reply-result"><p class="empty">No reply sent yet.</p></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ------------------------------ centre: the trace ------------------------------ -->
+  <div class="col col--mid">
+    <section class="panel panel--trace" id="panel-trace" aria-labelledby="h-trace">
+      <header class="panel__head panel__head--trace">
+        <h2 class="panel__title" id="h-trace"><span class="live-dot" id="live-dot" aria-hidden="true"></span> Live trace</h2>
+        <div class="counter" id="event-counter">
+          <span class="counter__n" id="event-count">0</span>
+          <span class="counter__label">events</span>
+          <span class="counter__sub" id="event-count-sub">stream not connected</span>
+        </div>
+        <div class="panel__tools">
+          <button type="button" class="btn btn--sm" id="trace-pause" aria-pressed="false">Pause</button>
+          <button type="button" class="btn btn--xs" id="trace-fetch" title="GET /api/runs/{run_id}/trace — a fallback for when SSE is blocked or buffered by a proxy">load /trace</button>
+          <button type="button" class="btn btn--xs" id="trace-follow" aria-pressed="true" title="Keep the newest event in view">Follow</button>
+          <button type="button" class="btn btn--xs btn--ghost" id="trace-clear">Clear</button>
+        </div>
+      </header>
+
+      <div class="chain-wrap">
+        <div class="chain-head">
+          <span class="chain-head__label">handoff chain</span>
+          <span class="chain-head__note" id="chain-note">control has not moved yet — no handoff event received</span>
+        </div>
+        <div class="chain" id="chain-rail"><span class="chain__empty">A1 → A2 → … appears here, one link per recorded handoff</span></div>
+      </div>
+
+      <div class="filterbar" id="kind-filter" role="group" aria-label="filter by event kind"></div>
+
+      <div class="trace-status" id="trace-status">
+        <span class="dot dot--idle" id="conn-dot"></span>
+        <span id="conn-text">not connected</span>
+        <span class="form__status" id="trace-status-note" role="status"></span>
+        <span class="trace-status__spacer"></span>
+        <span class="trace-status__stat" id="conn-stats"></span>
+      </div>
+
+      <div class="feed" id="trace-feed" tabindex="0" role="log" aria-live="polite" aria-relevant="additions">
+        <p class="empty empty--tall">Waiting for <code>/api/runs/{run_id}/stream</code>.<br />
+        Create an event and run a stage, or paste a <code>run_id</code> above and press <strong>Connect</strong>.</p>
+      </div>
+    </section>
+  </div>
+
+  <!-- ------------------------------ right rail ------------------------------ -->
+  <div class="col col--right">
+
+    <!-- 5. decision inspector -->
+    <section class="panel" id="panel-decisions" aria-labelledby="h-dec">
+      <header class="panel__head">
+        <h2 class="panel__title" id="h-dec"><span class="panel__num">5</span> Decision inspector</h2>
+        <div class="panel__tools">
+          <span class="mini-tally" id="dec-tally"></span>
+        </div>
+      </header>
+      <div class="panel__body" id="decisions-host">
+        <p class="empty">Every decision carries the subsystem that produced it.
+        <strong>Model-driven</strong> vs <strong>deterministic fallback</strong> is flagged on each card.</p>
+      </div>
+    </section>
+
+    <!-- 6. blackboard -->
+    <section class="panel" id="panel-board" aria-labelledby="h-board">
+      <header class="panel__head">
+        <h2 class="panel__title" id="h-board"><span class="panel__num">6</span> Blackboard</h2>
+        <div class="panel__tools">
+          <button type="button" class="btn btn--xs" id="board-refresh">Refresh</button>
+          <button type="button" class="btn btn--xs btn--ghost" id="board-tree-toggle" aria-pressed="false">derivation tree</button>
+        </div>
+      </header>
+      <div class="panel__body" id="board-host">
+        <p class="empty">Not loaded.</p>
+      </div>
+    </section>
+
+    <!-- 7. disputes & lessons -->
+    <section class="panel" id="panel-coord" aria-labelledby="h-coord">
+      <header class="panel__head">
+        <h2 class="panel__title" id="h-coord"><span class="panel__num">7</span> Disputes &amp; lessons</h2>
+        <div class="panel__tools">
+          <button type="button" class="btn btn--xs" id="coord-refresh">Refresh</button>
+        </div>
+      </header>
+      <div class="panel__body" id="coord-host">
+        <p class="empty">Not loaded.</p>
+      </div>
+    </section>
+
+    <!-- 8. run summary -->
+    <section class="panel" id="panel-summary" aria-labelledby="h-sum">
+      <header class="panel__head">
+        <h2 class="panel__title" id="h-sum"><span class="panel__num">8</span> Run summary</h2>
+        <div class="panel__tools">
+          <button type="button" class="btn btn--xs" id="summary-refresh">Refresh</button>
+          <button type="button" class="btn btn--xs" id="summary-copy">copy JSON</button>
+        </div>
+      </header>
+      <div class="panel__body" id="summary-host">
+        <p class="empty">Not loaded. <code>GET /api/runs/{run_id}/summary</code></p>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer class="foot">
+  <div class="foot__keys">
+    <strong>Keys</strong>
+    <kbd>1</kbd>–<kbd>7</kbd> stage · <kbd>n</kbd> next stage · <kbd>p</kbd> pause/resume feed ·
+    <kbd>g</kbd> refresh gates · <kbd>r</kbd> refresh board+summary · <kbd>c</kbd> copy summary JSON ·
+    <kbd>f</kbd> focus trace
+  </div>
+  <div class="foot__honesty">
+    Every number on this page came from the backend in this session. Fields the backend did not
+    send are shown as <span class="absent">not sent</span>, never guessed.
+  </div>
+</footer>
+
+<script src="app.js" defer></script>
+</body>
+</html>

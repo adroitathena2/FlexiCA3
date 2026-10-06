@@ -1,0 +1,10 @@
+# Paytriq dependencies.
+#
+# Single source of truth is `pyproject.toml` ([project.dependencies]); this
+# file only points at it so there is exactly one version list to maintain.
+# It exists (rather than `pip install -e .` everywhere) so the Dockerfile can
+# install dependencies in a cached layer before the source tree is copied.
+#
+# Developers and CI install with dev tooling included:
+#   pip install -e .[dev]
+-e .

@@ -1,0 +1,56 @@
+# Render deployment for the Paytriq API + static frontend.
+# The frontend in frontend/ is served by the API itself (api/main.py mounts it
+# at /), so one web service is the whole deployment.
+services:
+  - type: web
+    name: paytriq
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      # PORT is injected by Render; the Dockerfile's CMD honours it.
+      - key: ENVIRONMENT
+        value: prod
+      - key: RUN_MODE
+        value: live
+      # No local GPU on Render, so decisions go to the Cloudflare Workers AI
+      # endpoint (plain-HTTP decision backend, no Python package needed).
+      # The account id and token are secrets: set them in the dashboard,
+      # never in this file.
+      - key: CLEF_BACKEND
+        value: workers_ai
+      - key: CLEF_ACCOUNT_ID
+        sync: false
+      - key: CLEF_API_KEY
+        sync: false
+      # Real generative reasoning needs a key; without it the system runs
+      # degraded (rules backend + fixture tools) and says so in every trace.
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      # Fixture-backed tools by default. Flip to true only if live
+      # Overpass/Nominatim/Resend calls are wanted (and rate-limited kindly).
+      - key: TOOLS_LIVE
+        value: false
+      # Local decision-model calls must fail fast on a host with no GPU-backed
+      # llama-server; the registry then degrades to gemini/rules and says so.
+      - key: CLEF_TIMEOUT_S
+        value: 5
+      # Gate flow: A3 (outreach) and A4 (contract/MoU release) park at a human
+      # gate and are refused with 403 {gated:true} until answered via
+      # POST /api/gates/{gate_id} (approve/reject/revise). Gates must block
+      # for a human in the deployed demo; auto-approve would manufacture the
+      # adaptivity the eval is trying to measure.
+      - key: HUMAN_GATES_INTERACTIVE
+        value: true
+      # Provenance: inject the real commit SHA at build/deploy time so traces
+      # and golden_summary.json record the build, never an invented hash.
+      # Render exposes RENDER_GIT_COMMIT automatically; mirror it into the
+      # GIT_COMMIT/CODE_SHA256 names the app reads (core/config.py also falls
+      # back to RENDER_GIT_COMMIT directly). Set in the dashboard for manual
+      # deploys; a zero-commit checkout records "uncommitted-working-tree".
+      - key: GIT_COMMIT
+        sync: false
+      - key: CODE_SHA256
+        sync: false

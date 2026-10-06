@@ -1,0 +1,52 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	discover(discover)
+	replan(replan)
+	price(price)
+	auction(auction)
+	outreach(outreach)
+	reply(reply)
+	revise(revise)
+	archive(archive)
+	debate(debate)
+	adjudicate(adjudicate)
+	escalate(escalate)
+	contract(contract)
+	compliance(compliance)
+	audit(audit)
+	finalize(finalize)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> discover;
+	adjudicate -. &nbsp;audit_after_resolution&nbsp; .-> audit;
+	adjudicate -. &nbsp;escalate_to_human&nbsp; .-> escalate;
+	archive --> audit;
+	auction -. &nbsp;execute_award&nbsp; .-> outreach;
+	audit -. &nbsp;complete&nbsp; .-> finalize;
+	audit -. &nbsp;replan_progress&nbsp; .-> replan;
+	compliance -. &nbsp;arbitrate&nbsp; .-> adjudicate;
+	compliance -. &nbsp;compliance_clear_for_audit&nbsp; .-> audit;
+	contract --> compliance;
+	debate --> adjudicate;
+	discover -. &nbsp;proceed&nbsp; .-> price;
+	discover -. &nbsp;replan_for_radius&nbsp; .-> replan;
+	escalate -. &nbsp;gate_approved_proceed&nbsp; .-> audit;
+	escalate -. &nbsp;gate_revise_replan&nbsp; .-> replan;
+	outreach --> reply;
+	price -. &nbsp;proceed&nbsp; .-> auction;
+	price -. &nbsp;escalate_dispute&nbsp; .-> debate;
+	replan --> discover;
+	reply -. &nbsp;archive_thread&nbsp; .-> archive;
+	reply -. &nbsp;go_contract&nbsp; .-> contract;
+	reply -. &nbsp;negotiation_exhausted_dispute&nbsp; .-> debate;
+	reply -. &nbsp;followup&nbsp; .-> outreach;
+	reply -. &nbsp;go_reprice&nbsp; .-> revise;
+	revise --> outreach;
+	finalize --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

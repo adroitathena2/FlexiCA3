@@ -1,0 +1,4 @@
+# TODO(G): replace with real GitHub logins, e.g. `* @alice @bob`.
+# Each member works on their own branch (`<login>/...`, see CONTRIBUTING.md);
+# add per-prefix rules once logins are known, e.g. `alice/* @alice`.
+* @TODO-owner
